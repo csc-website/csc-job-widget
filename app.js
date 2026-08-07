@@ -23,14 +23,14 @@ async function loadJobs() {
     }
 
     jobs.slice(0, 5).forEach(function(job) {
-      var article = document.createElement("article");
+      const article = document.createElement("article");
       article.className = "job";
 
-      var content = document.createElement("div");
+      const content = document.createElement("div");
       content.className = "job-content";
 
       if (job.company_logo_url) {
-        var logo = document.createElement("img");
+        const logo = document.createElement("img");
 
         logo.className = "job-logo";
         logo.src = job.company_logo_url;
@@ -46,21 +46,21 @@ async function loadJobs() {
         content.appendChild(logo);
       }
 
-      var details = document.createElement("div");
+      const details = document.createElement("div");
       details.className = "job-details";
 
-      var title = document.createElement("a");
+      const title = document.createElement("a");
       title.className = "job-title";
       title.href = job.link;
       title.target = "_blank";
       title.rel = "noopener noreferrer";
       title.textContent = job.title || "Job opportunity";
 
-      var employer = document.createElement("div");
+      const employer = document.createElement("div");
       employer.className = "employer";
       employer.textContent = job.employer || "";
 
-      var viewJob = document.createElement("a");
+      const viewJob = document.createElement("a");
       viewJob.className = "view-job";
       viewJob.href = job.link;
       viewJob.target = "_blank";
@@ -82,7 +82,7 @@ async function loadJobs() {
 
     jobsContainer.replaceChildren();
 
-    var message = document.createElement("p");
+    const message = document.createElement("p");
     message.className = "error";
     message.textContent = "Job listings are temporarily unavailable.";
 
