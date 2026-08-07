@@ -6,12 +6,51 @@ import re
 
 FEED_URL = "https://careercenter.collegesportscommunicators.com/jobs?display=rss"
 
+
 def clean(text):
     if not text:
         return ""
+
     text = unescape(text)
     text = re.sub(r"<[^>]+>", "", text)
+
     return " ".join(text.split())
+
+
+def fetch_url(url):
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0"
+        }
+    )
+
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return response.read().decode("utf-8", errors="replace")
+
+
+def extract_logo(html):
+    # Look for Open Graph image metadata.
+    patterns = [
+        r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
+        r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']',
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, html, re.IGNORECASE)
+
+        if match:
+            logo_url = unescape(match.group(1).strip())
+
+            if logo_url.startswith("//"):
+                logo_url = "https:" + logo_url
+
+            return logo_url
+
+    return ""
+
 
 request = urllib.request.Request(
     FEED_URL,
@@ -26,41 +65,60 @@ root = ET.fromstring(xml)
 jobs = []
 
 for item in root.iter():
-    if item.tag.lower().endswith("item"):
 
-        title = ""
-        link = ""
+    if not item.tag.lower().endswith("item"):
+        continue
 
-        for child in item:
-            tag = child.tag.lower()
+    title = ""
+    link = ""
 
-            if tag.endswith("title"):
-                title = clean(child.text)
+    for child in item:
+        tag = child.tag.lower()
 
-            elif tag.endswith("link"):
-                link = clean(child.text)
+        if tag.endswith("title"):
+            title = clean(child.text)
 
-        if not title or not link:
-            continue
+        elif tag.endswith("link"):
+            link = clean(child.text)
 
-        # CSC places the employer after a | character.
-        if "|" in title:
-            title, employer = title.split("|", 1)
-            title = title.strip()
-            employer = employer.strip()
-        else:
-            employer = ""
+    if not title or not link:
+        continue
 
-        jobs.append({
-            "title": title,
-            "employer": employer,
-            "link": link
-        })
+    # CSC places the employer after a | character.
+    if "|" in title:
+        title, employer = title.split("|", 1)
+        title = title.strip()
+        employer = employer.strip()
+    else:
+        employer = ""
 
-        if len(jobs) == 5:
-            break
+    logo_url = ""
+
+    try:
+        page_html = fetch_url(link)
+        logo_url = extract_logo(page_html)
+    except Exception as error:
+        print(f"Could not retrieve logo for {title}: {error}")
+
+    job = {
+        "title": title,
+        "employer": employer,
+        "link": link,
+        "company_logo_url": logo_url
+    }
+
+    jobs.append(job)
+
+    if len(jobs) == 5:
+        break
+
 
 with open("jobs.json", "w", encoding="utf-8") as file:
-    json.dump(jobs, file, indent=2, ensure_ascii=False)
+    json.dump(
+        jobs,
+        file,
+        indent=2,
+        ensure_ascii=False
+    )
 
 print(f"Updated {len(jobs)} jobs.")
