@@ -9,7 +9,7 @@ FEED_URL = "https://careercenter.collegesportscommunicators.com/jobs?display=rss
 OUTPUT = Path("jobs.json")
 LIMIT = 5
 
-USER_AGENT = "CSC-Job-Widget/1.0 (+https://github.com/csc-website/csc-job-widget)"
+USER_AGENT = "CSC-Job-Widget/1.0"
 
 def clean(value):
     if value is None:
@@ -26,63 +26,62 @@ def first_text(item, names):
                 return value
     return ""
 
-def extract_employer(item):
-    # Prefer explicit employer/company fields if the feed provides one.
-    employer = first_text(item, {"employer", "company", "organization", "organizationname"})
-    if employer:
-        return employer
+def split_title_employer(title):
+    """
+    CSC's RSS feed puts the employer after a | character.
+    Example:
+    Director of Communications | University of Oklahoma Athletics
+    """
+    if "|" in title:
+        job_title, employer = title.split("|", 1)
+        return job_title.strip(), employer.strip()
 
-    # Common RSS feeds expose the employer as author/creator.
-    employer = first_text(item, {"author", "creator"})
-    if employer and "@" not in employer:
-        return employer
-
-    # Fall back to the first non-empty line of the description.
-    description = first_text(item, {"description", "summary", "content"})
-    if description:
-        parts = [p.strip() for p in re.split(r"[\r\n|]+", description) if p.strip()]
-        if parts:
-            candidate = parts[0]
-            if len(candidate) <= 150 and candidate.lower() not in {"job description", "description"}:
-                return candidate
-
-    return ""
+    return title.strip(), ""
 
 def main():
-    request = urllib.request.Request(FEED_URL, headers={"User-Agent": USER_AGENT})
+    request = urllib.request.Request(
+        FEED_URL,
+        headers={"User-Agent": USER_AGENT}
+    )
+
     with urllib.request.urlopen(request, timeout=30) as response:
         xml_data = response.read()
 
     root = ET.fromstring(xml_data)
-    items = []
+
+    jobs = []
 
     for item in root.iter():
         if item.tag.rsplit("}", 1)[-1].lower() != "item":
             continue
 
-        title = first_text(item, {"title"})
+        raw_title = first_text(item, {"title"})
         link = first_text(item, {"link", "guid"})
-        employer = extract_employer(item)
 
-        if not title or not link:
+        if not raw_title or not link:
             continue
+
+        title, employer = split_title_employer(raw_title)
 
         if link.startswith("/"):
             link = "https://careercenter.collegesportscommunicators.com" + link
 
-        items.append({
+        jobs.append({
             "title": title,
             "employer": employer,
             "link": link
         })
 
-        if len(items) >= LIMIT:
+        if len(jobs) >= LIMIT:
             break
 
-    if not items:
-        raise RuntimeError("The RSS feed returned no usable job items.")
+    if not jobs:
+        raise RuntimeError("No usable jobs were found in the RSS feed.")
 
-    OUTPUT.write_text(json.dumps(items, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    OUTPUT.write_text(
+        json.dumps(jobs, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8"
+    )
 
 if __name__ == "__main__":
     main()
