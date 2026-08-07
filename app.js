@@ -26,6 +26,22 @@ async function loadJobs() {
       const article = document.createElement("article");
       article.className = "job";
 
+      const content = document.createElement("div");
+      content.className = "job-content";
+
+      if (job.company_logo_url) {
+        const logo = document.createElement("img");
+        logo.className = "job-logo";
+        logo.src = job.company_logo_url;
+        logo.alt = job.employer ? `${job.employer} logo` : "Company logo";
+        logo.loading = "lazy";
+
+        content.appendChild(logo);
+      }
+
+      const details = document.createElement("div");
+      details.className = "job-details";
+
       const title = document.createElement("a");
       title.className = "job-title";
       title.href = job.link;
@@ -37,12 +53,15 @@ async function loadJobs() {
       employer.className = "employer";
       employer.textContent = job.employer || "";
 
-      article.appendChild(title);
-      article.appendChild(employer);
+      details.appendChild(title);
+      details.appendChild(employer);
+
+      content.appendChild(details);
+
+      article.appendChild(content);
 
       jobsContainer.appendChild(article);
     });
-
   } catch (error) {
     jobsContainer.replaceChildren();
 
