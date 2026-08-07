@@ -2,17 +2,23 @@ const jobsContainer = document.getElementById("jobs");
 
 async function loadJobs() {
   try {
-    const response = await fetch("jobs.json", { cache: "no-store" });
-    if (!response.ok) throw new Error("Unable to load jobs.");
+    const response = await fetch("jobs.json", {
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      throw new Error("Unable to load jobs.");
+    }
+
     const jobs = await response.json();
 
     jobsContainer.replaceChildren();
 
     if (!Array.isArray(jobs) || jobs.length === 0) {
-      const p = document.createElement("p");
-      p.className = "status";
-      p.textContent = "No current job postings are available.";
-      jobsContainer.appendChild(p);
+      const message = document.createElement("p");
+      message.className = "status";
+      message.textContent = "No current job postings are available.";
+      jobsContainer.appendChild(message);
       return;
     }
 
@@ -31,22 +37,20 @@ async function loadJobs() {
       employer.className = "employer";
       employer.textContent = job.employer || "";
 
-      const view = document.createElement("a");
-      view.className = "view-job";
-      view.href = job.link;
-      view.target = "_blank";
-      view.rel = "noopener noreferrer";
-      view.textContent = "View job";
+      article.appendChild(title);
+      article.appendChild(employer);
 
-      article.append(title, employer, view);
       jobsContainer.appendChild(article);
     });
+
   } catch (error) {
     jobsContainer.replaceChildren();
-    const p = document.createElement("p");
-    p.className = "error";
-    p.textContent = "Job listings are temporarily unavailable.";
-    jobsContainer.appendChild(p);
+
+    const message = document.createElement("p");
+    message.className = "error";
+    message.textContent = "Job listings are temporarily unavailable.";
+
+    jobsContainer.appendChild(message);
   }
 }
 
