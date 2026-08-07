@@ -1,6 +1,10 @@
-* { box-sizing: border-box; }
+```css
+* {
+  box-sizing: border-box;
+}
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   background: #fff;
@@ -35,6 +39,26 @@ h1 {
 .job:last-child {
   margin-bottom: 0;
   border-bottom: 0;
+}
+
+.job-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  width: 100%;
+}
+
+.job-logo {
+  flex: 0 0 80px;
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+  display: block;
+}
+
+.job-details {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .job-title {
@@ -84,6 +108,16 @@ h1 {
     font-size: 18px;
   }
 
+  .job-content {
+    gap: 12px;
+  }
+
+  .job-logo {
+    flex: 0 0 70px;
+    width: 70px;
+    height: 70px;
+  }
+
   .job-title {
     font-size: 15px;
   }
@@ -92,3 +126,4 @@ h1 {
     font-size: 13px;
   }
 }
+```
