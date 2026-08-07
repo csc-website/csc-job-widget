@@ -1,88 +1,66 @@
 import json
-import re
 import urllib.request
 import xml.etree.ElementTree as ET
 from html import unescape
-from pathlib import Path
+import re
 
 FEED_URL = "https://careercenter.collegesportscommunicators.com/jobs?display=rss"
-OUTPUT = Path("jobs.json")
-LIMIT = 5
 
-USER_AGENT = "CSC-Job-Widget/1.0 (+https://github.com/csc-website/csc-job-widget)"
-
-def clean(value):
-    if value is None:
+def clean(text):
+    if not text:
         return ""
-    value = unescape(re.sub(r"<[^>]+>", " ", value))
-    return re.sub(r"\s+", " ", value).strip()
+    text = unescape(text)
+    text = re.sub(r"<[^>]+>", "", text)
+    return " ".join(text.split())
 
-def first_text(item, names):
-    for child in list(item):
-        tag = child.tag.rsplit("}", 1)[-1].lower()
-        if tag in names:
-            value = clean(child.text)
-            if value:
-                return value
-    return ""
+request = urllib.request.Request(
+    FEED_URL,
+    headers={"User-Agent": "Mozilla/5.0"}
+)
 
-def extract_employer(item):
-    # Prefer explicit employer/company fields if the feed provides one.
-    employer = first_text(item, {"employer", "company", "organization", "organizationname"})
-    if employer:
-        return employer
+with urllib.request.urlopen(request, timeout=30) as response:
+    xml = response.read()
 
-    # Common RSS feeds expose the employer as author/creator.
-    employer = first_text(item, {"author", "creator"})
-    if employer and "@" not in employer:
-        return employer
+root = ET.fromstring(xml)
 
-    # Fall back to the first non-empty line of the description.
-    description = first_text(item, {"description", "summary", "content"})
-    if description:
-        parts = [p.strip() for p in re.split(r"[\r\n|]+", description) if p.strip()]
-        if parts:
-            candidate = parts[0]
-            if len(candidate) <= 150 and candidate.lower() not in {"job description", "description"}:
-                return candidate
+jobs = []
 
-    return ""
+for item in root.iter():
+    if item.tag.lower().endswith("item"):
 
-def main():
-    request = urllib.request.Request(FEED_URL, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(request, timeout=30) as response:
-        xml_data = response.read()
+        title = ""
+        link = ""
 
-    root = ET.fromstring(xml_data)
-    items = []
+        for child in item:
+            tag = child.tag.lower()
 
-    for item in root.iter():
-        if item.tag.rsplit("}", 1)[-1].lower() != "item":
-            continue
+            if tag.endswith("title"):
+                title = clean(child.text)
 
-        title = first_text(item, {"title"})
-        link = first_text(item, {"link", "guid"})
-        employer = extract_employer(item)
+            elif tag.endswith("link"):
+                link = clean(child.text)
 
         if not title or not link:
             continue
 
-        if link.startswith("/"):
-            link = "https://careercenter.collegesportscommunicators.com" + link
+        # CSC places the employer after a | character.
+        if "|" in title:
+            title, employer = title.split("|", 1)
+            title = title.strip()
+            employer = employer.strip()
+        else:
+            employer = ""
 
-        items.append({
+        jobs.append({
             "title": title,
             "employer": employer,
             "link": link
         })
 
-        if len(items) >= LIMIT:
+        if len(jobs) == 5:
             break
 
-    if not items:
-        raise RuntimeError("The RSS feed returned no usable job items.")
+with open("jobs.json", "w", encoding="utf-8") as file:
+    json.dump(jobs, file, indent=2, ensure_ascii=False)
 
-    OUTPUT.write_text(json.dumps(items, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-
-if __name__ == "__main__":
-    main()
+print(f"Updated {len(jobs)} jobs.")
