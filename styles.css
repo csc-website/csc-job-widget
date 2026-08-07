@@ -44,7 +44,7 @@ h1 {
 .job-content {
   display: flex;
   align-items: flex-start;
-  gap: 16px;
+  gap: 10px;
   width: 100%;
 }
 
@@ -113,9 +113,9 @@ h1 {
   }
 
   .job-logo {
-    flex: 0 0 70px;
-    width: 70px;
-    height: 70px;
+    flex: 0 0 30px;
+    width: 30px;
+    height: 30px;
   }
 
   .job-title {
