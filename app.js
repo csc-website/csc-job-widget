@@ -60,16 +60,8 @@ async function loadJobs() {
       employer.className = "employer";
       employer.textContent = job.employer || "";
 
-      const viewJob = document.createElement("a");
-      viewJob.className = "view-job";
-      viewJob.href = job.link;
-      viewJob.target = "_blank";
-      viewJob.rel = "noopener noreferrer";
-      viewJob.textContent = "View Job";
-
       details.appendChild(title);
       details.appendChild(employer);
-      details.appendChild(viewJob);
 
       content.appendChild(details);
       article.appendChild(content);
