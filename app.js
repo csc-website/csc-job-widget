@@ -1,4 +1,3 @@
-```javascript
 const jobsContainer = document.getElementById("jobs");
 
 async function loadJobs() {
@@ -92,4 +91,3 @@ async function loadJobs() {
 }
 
 loadJobs();
-```
