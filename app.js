@@ -30,7 +30,6 @@ async function loadJobs() {
       const content = document.createElement("div");
       content.className = "job-content";
 
-      // Add employer logo when one is available.
       if (job.company_logo_url) {
         const logo = document.createElement("img");
 
@@ -41,8 +40,6 @@ async function loadJobs() {
           : "Company logo";
         logo.loading = "lazy";
 
-        // If a logo fails to load, remove it so the job
-        // information still displays normally.
         logo.addEventListener("error", () => {
           logo.remove();
         });
@@ -53,7 +50,6 @@ async function loadJobs() {
       const details = document.createElement("div");
       details.className = "job-details";
 
-      // Job title
       const title = document.createElement("a");
 
       title.className = "job-title";
@@ -62,13 +58,11 @@ async function loadJobs() {
       title.rel = "noopener noreferrer";
       title.textContent = job.title || "Job opportunity";
 
-      // Employer
       const employer = document.createElement("div");
 
       employer.className = "employer";
       employer.textContent = job.employer || "";
 
-      // View Job link
       const viewJob = document.createElement("a");
 
       viewJob.className = "view-job";
@@ -87,10 +81,11 @@ async function loadJobs() {
       jobsContainer.appendChild(article);
     });
   } catch (error) {
+    console.error("Jobs widget error:", error);
+
     jobsContainer.replaceChildren();
 
     const message = document.createElement("p");
-
     message.className = "error";
     message.textContent = "Job listings are temporarily unavailable.";
 
