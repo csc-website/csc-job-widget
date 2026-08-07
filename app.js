@@ -23,7 +23,7 @@ async function loadJobs() {
       return;
     }
 
-    jobs.slice(0, 5).forEach(job => {
+    jobs.slice(0, 5).forEach(function(job) {
       const article = document.createElement("article");
       article.className = "job";
 
@@ -36,11 +36,11 @@ async function loadJobs() {
         logo.className = "job-logo";
         logo.src = job.company_logo_url;
         logo.alt = job.employer
-          ? `${job.employer} logo`
+          ? job.employer + " logo"
           : "Company logo";
         logo.loading = "lazy";
 
-        logo.addEventListener("error", () => {
+        logo.addEventListener("error", function() {
           logo.remove();
         });
 
@@ -51,7 +51,6 @@ async function loadJobs() {
       details.className = "job-details";
 
       const title = document.createElement("a");
-
       title.className = "job-title";
       title.href = job.link;
       title.target = "_blank";
@@ -59,12 +58,10 @@ async function loadJobs() {
       title.textContent = job.title || "Job opportunity";
 
       const employer = document.createElement("div");
-
       employer.className = "employer";
       employer.textContent = job.employer || "";
 
       const viewJob = document.createElement("a");
-
       viewJob.className = "view-job";
       viewJob.href = job.link;
       viewJob.target = "_blank";
@@ -80,6 +77,7 @@ async function loadJobs() {
 
       jobsContainer.appendChild(article);
     });
+
   } catch (error) {
     console.error("Jobs widget error:", error);
 
