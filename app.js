@@ -22,7 +22,7 @@ async function loadJobs() {
       return;
     }
 
-    jobs.slice(0, 5).forEach(function(job) {
+    jobs.slice(0, 10).forEach(function(job) {
       const article = document.createElement("article");
       article.className = "job";
 
@@ -68,6 +68,15 @@ async function loadJobs() {
 
       jobsContainer.appendChild(article);
     });
+
+    const moreLink = document.createElement("a");
+    moreLink.className = "see-more";
+    moreLink.href = "https://careercenter.collegesportscommunicators.com/jobs/";
+    moreLink.target = "_blank";
+    moreLink.rel = "noopener noreferrer";
+    moreLink.textContent = "See more openings";
+
+    jobsContainer.appendChild(moreLink);
 
   } catch (error) {
     console.error("Jobs widget error:", error);
