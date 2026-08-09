@@ -3,8 +3,36 @@ import urllib.request
 import xml.etree.ElementTree as ET
 from html import unescape
 import re
+from urllib.parse import quote
 
 FEED_URL = "https://careercenter.collegesportscommunicators.com/jobs?display=rss"
+
+# The Career Center blocks automated requests to individual job pages.
+# We therefore use stable official institutional domains for logos instead.
+EMPLOYER_DOMAINS = {
+    "Ferris State University": "ferris.edu",
+    "University of Oklahoma Athletics": "soonersports.com",
+    "University of Utah": "utah.edu",
+    "University of Illinois Chicago": "uic.edu",
+    "Keiser University": "keiseruniversity.edu",
+    "Wichita State Athletics": "goshockers.com",
+    "Queens University of Charlotte": "queens.edu",
+    "University of Kentucky Athletics": "ukathletics.com",
+    "Penn State Athletics": "gopsusports.com",
+    "Weber State University": "weber.edu"
+}
+
+def get_logo_url(employer):
+    domain = EMPLOYER_DOMAINS.get(employer)
+
+    if not domain:
+        return ""
+
+    return (
+        "https://www.google.com/s2/favicons"
+        "?domain=" + quote(domain)
+        + "&sz=128"
+    )
 
 request = urllib.request.Request(
     FEED_URL,
@@ -50,71 +78,19 @@ for item in root.iter():
     else:
         employer = ""
 
-    job_page_url = link.replace(
-        "/jobs/rss/",
-        "/jobs/",
-        1
-    )
+    logo_url = get_logo_url(employer)
 
-    logo_url = ""
-
-    try:
-        page_request = urllib.request.Request(
-            job_page_url,
-            headers={"User-Agent": "Mozilla/5.0"}
-        )
-
-        page_response = urllib.request.urlopen(
-            page_request,
-            timeout=30
-        )
-
-        page_html = page_response.read().decode(
-            "utf-8",
-            errors="replace"
-        )
-
-        page_response.close()
-
-        patterns = [
-            r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
-            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
-            r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']',
-            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']'
-        ]
-
-        for pattern in patterns:
-            match = re.search(
-                pattern,
-                page_html,
-                re.IGNORECASE
-            )
-
-            if match:
-                logo_url = unescape(
-                    match.group(1).strip()
-                )
-                break
-
-        if logo_url:
-            print(
-                "Found logo for {}: {}".format(
-                    employer,
-                    logo_url
-                )
-            )
-        else:
-            print(
-                "No logo found for {}".format(
-                    employer
-                )
-            )
-
-    except Exception as error:
+    if logo_url:
         print(
-            "Could not retrieve logo for {}: {}".format(
+            "Using official-domain logo for {}: {}".format(
                 employer,
-                error
+                logo_url
+            )
+        )
+    else:
+        print(
+            "No logo mapping for {}".format(
+                employer
             )
         )
 
