@@ -1,155 +1,151 @@
 import json
+import re
 import urllib.request
+import urllib.parse
 import xml.etree.ElementTree as ET
 from html import unescape
-import re
-from urllib.parse import quote_plus, urljoin, urlparse
 
 FEED_URL = "https://careercenter.collegesportscommunicators.com/jobs?display=rss"
+DOMAIN_CACHE_FILE = "logo_domains.json"
+MAX_JOBS = 10
+
+USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/151.0 Safari/537.36"
+)
 
 def clean_text(text):
     if not text:
         return ""
-
     text = unescape(text)
     text = re.sub(r"<[^>]+>", "", text)
     return " ".join(text.split())
 
-def get_html(url):
+def fetch(url, timeout=20):
     request = urllib.request.Request(
         url,
         headers={
-            "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 Chrome/151.0 Safari/537.36"
-            )
-        }
+            "User-Agent": USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
     )
-
-    response = urllib.request.urlopen(
-        request,
-        timeout=20
-    )
-
-    html = response.read().decode(
-        "utf-8",
-        errors="replace"
-    )
-
+    response = urllib.request.urlopen(request, timeout=timeout)
+    data = response.read()
     response.close()
+    return data
 
-    return html
+def load_domain_cache():
+    try:
+        with open(DOMAIN_CACHE_FILE, "r", encoding="utf-8") as file:
+            data = json.load(file)
+            if isinstance(data, dict):
+                return data
+    except Exception:
+        pass
+    return {}
 
-def search_athletics_domain(employer):
-    query = quote_plus(
-        '"' + employer + '" athletics official website'
+def save_domain_cache(cache):
+    with open(DOMAIN_CACHE_FILE, "w", encoding="utf-8") as file:
+        json.dump(cache, file, indent=2, ensure_ascii=False, sort_keys=True)
+
+def domain_from_url(url):
+    try:
+        parsed = urllib.parse.urlparse(url)
+        domain = parsed.netloc.lower()
+        if domain.startswith("www."):
+            domain = domain[4:]
+        return domain
+    except Exception:
+        return ""
+
+def search_athletics_site(employer):
+    query = urllib.parse.quote_plus(
+        '"' + employer + '" official athletics'
     )
 
     search_url = (
-        "https://www.google.com/search?q="
+        "https://html.duckduckgo.com/html/?q="
         + query
     )
 
     try:
-        html = get_html(search_url)
+        html = fetch(search_url).decode(
+            "utf-8",
+            errors="replace"
+        )
     except Exception as error:
         print(
-            "Athletics-domain search failed for {}: {}".format(
+            "Athletics search failed for {}: {}".format(
                 employer,
                 error
             )
         )
         return ""
 
+    # DuckDuckGo HTML results use result__a links. Some results are
+    # redirect URLs containing uddg=; unwrap those when necessary.
     links = re.findall(
-        r'https?://[^"\'<>\s&]+',
+        r'<a[^>]+class=["\'][^"\']*result__a[^"\']*["\'][^>]+href=["\']([^"\']+)["\']',
         html,
         re.IGNORECASE
     )
 
     ignored = {
+        "duckduckgo.com",
         "google.com",
-        "www.google.com",
-        "accounts.google.com",
-        "support.google.com",
         "facebook.com",
-        "www.facebook.com",
         "instagram.com",
-        "www.instagram.com",
         "linkedin.com",
-        "www.linkedin.com",
+        "youtube.com",
         "twitter.com",
         "x.com",
-        "www.x.com",
-        "youtube.com",
-        "www.youtube.com",
         "wikipedia.org",
-        "www.wikipedia.org"
+        "espn.com",
+        "ncaa.com",
+        "cbssports.com",
+        "yahoo.com",
+        "usatoday.com",
+        "news.google.com",
     }
 
     candidates = []
 
     for link in links:
-        match = re.match(
-            r"https?://(?:www\.)?([^/]+)",
-            link,
-            re.IGNORECASE
-        )
+        link = unescape(link)
 
-        if not match:
+        parsed = urllib.parse.urlparse(link)
+
+        if "uddg" in urllib.parse.parse_qs(parsed.query):
+            link = urllib.parse.parse_qs(parsed.query)["uddg"][0]
+
+        domain = domain_from_url(link)
+
+        if not domain:
             continue
-
-        domain = match.group(1).lower()
 
         if domain in ignored:
             continue
 
-        if domain.endswith(".google.com"):
+        if any(domain.endswith("." + item) for item in ignored):
             continue
 
         score = 0
+        lower = link.lower()
 
-        if "athletic" in domain:
+        if "athletic" in lower:
             score += 10
 
-        if "sports" in domain:
-            score += 10
+        if "sports" in lower:
+            score += 8
 
-        if "sooner" in domain:
-            score += 5
-
-        if "utes" in domain:
-            score += 5
-
-        if "wildcat" in domain:
-            score += 5
-
-        if "cardinal" in domain:
-            score += 5
-
-        if "bulldog" in domain:
-            score += 5
-
-        if "tiger" in domain:
-            score += 5
-
-        if "eagle" in domain:
-            score += 5
-
-        if "bear" in domain:
-            score += 5
-
-        if "knight" in domain:
-            score += 5
-
-        if "hawk" in domain:
-            score += 5
-
-        if "panther" in domain:
-            score += 5
-
-        if "university" in domain:
+        if "official" in lower:
             score += 2
+
+        # Prefer .edu when the athletics site is hosted directly there.
+        if domain.endswith(".edu"):
+            score += 3
 
         candidates.append(
             (score, domain)
@@ -160,37 +156,35 @@ def search_athletics_domain(employer):
         reverse=True
     )
 
-    # Try the strongest candidates first and verify that the site
-    # actually contains athletics-related content.
-    tried = set()
+    seen = set()
 
     for score, domain in candidates:
 
-        if domain in tried:
+        if domain in seen:
             continue
 
-        tried.add(domain)
-
-        if score < 2:
-            continue
+        seen.add(domain)
 
         site_url = "https://" + domain + "/"
 
         try:
-            html = get_html(site_url)
+            site_html = fetch(site_url).decode(
+                "utf-8",
+                errors="replace"
+            )
         except Exception:
             continue
 
-        lower_html = html.lower()
+        lower_html = site_html.lower()
 
         athletics_terms = [
             "athletics",
             "sports",
-            "varsity",
-            "ncaa",
             "roster",
             "schedule",
-            "scoreboard"
+            "scoreboard",
+            "ncaa",
+            "tickets",
         ]
 
         matches = sum(
@@ -199,7 +193,7 @@ def search_athletics_domain(employer):
             if term in lower_html
         )
 
-        if matches >= 2:
+        if matches >= 1 or score >= 8:
             print(
                 "Athletics site for {}: {}".format(
                     employer,
@@ -210,156 +204,106 @@ def search_athletics_domain(employer):
 
     return ""
 
-def find_logo_on_athletics_site(site_url):
+def find_logo(site_url):
     try:
-        html = get_html(site_url)
+        html = fetch(site_url).decode(
+            "utf-8",
+            errors="replace"
+        )
     except Exception as error:
         print(
-            "Could not retrieve athletics site {}: {}".format(
+            "Could not read athletics site {}: {}".format(
                 site_url,
                 error
             )
         )
         return ""
 
-    # Prefer an actual image whose filename, alt text, class, or id
-    # identifies it as the site's logo.
-    image_patterns = [
-        r'<img[^>]+(?:class|id)=["\'][^"\']*logo[^"\']*["\'][^>]+src=["\']([^"\']+)["\']',
+    # Prefer actual logo image assets.
+    patterns = [
+        r'<img[^>]+src=["\']([^"\']+)["\'][^>]*(?:class|id|alt)=["\'][^"\']*logo[^"\']*["\']',
+        r'<img[^>]+(?:class|id|alt)=["\'][^"\']*logo[^"\']*["\'][^>]+src=["\']([^"\']+)["\']',
         r'<img[^>]+src=["\']([^"\']*logo[^"\']*)["\'][^>]*>',
-        r'<img[^>]+alt=["\'][^"\']*logo[^"\']*["\'][^>]+src=["\']([^"\']+)["\']',
-        r'<img[^>]+src=["\']([^"\']+)["\'][^>]+alt=["\'][^"\']*logo[^"\']*["\']'
     ]
 
-    for pattern in image_patterns:
-
+    for pattern in patterns:
         match = re.search(
             pattern,
             html,
             re.IGNORECASE
         )
-
         if match:
-
-            logo_url = urljoin(
+            logo = urllib.parse.urljoin(
                 site_url,
                 unescape(match.group(1).strip())
             )
+            if logo.startswith("http"):
+                return logo
 
-            if logo_url.startswith("http"):
-                print(
-                    "Athletics logo found: {}".format(
-                        logo_url
-                    )
-                )
-                return logo_url
-
-    # Next try Open Graph and Twitter images.
+    # Open Graph image is a useful fallback and is usually a high-quality
+    # athletics brand image.
     meta_patterns = [
         r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
         r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
-        r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']',
-        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']'
     ]
 
     for pattern in meta_patterns:
-
         match = re.search(
             pattern,
             html,
             re.IGNORECASE
         )
-
         if match:
-
-            image_url = urljoin(
+            image = urllib.parse.urljoin(
                 site_url,
                 unescape(match.group(1).strip())
             )
-
-            if image_url.startswith("http"):
-                print(
-                    "Athletics site image found: {}".format(
-                        image_url
-                    )
-                )
-                return image_url
-
-    # Finally use the site's icon as a last resort.
-    icon_patterns = [
-        r'<link[^>]+rel=["\'][^"\']*(?:icon|apple-touch-icon)[^"\']*["\'][^>]+href=["\']([^"\']+)["\']',
-        r'<link[^>]+href=["\']([^"\']+)["\'][^>]+rel=["\'][^"\']*(?:icon|apple-touch-icon)[^"\']*["\']'
-    ]
-
-    for pattern in icon_patterns:
-
-        match = re.search(
-            pattern,
-            html,
-            re.IGNORECASE
-        )
-
-        if match:
-
-            icon_url = urljoin(
-                site_url,
-                unescape(match.group(1).strip())
-            )
-
-            if icon_url.startswith("http"):
-                print(
-                    "Athletics site icon found: {}".format(
-                        icon_url
-                    )
-                )
-                return icon_url
+            if image.startswith("http"):
+                return image
 
     return ""
 
-def get_logo_url(employer):
-    site_url = search_athletics_domain(
-        employer
-    )
+def get_logo(employer, domain_cache):
+    site_url = domain_cache.get(employer, "")
+
+    if not site_url:
+        site_url = search_athletics_site(employer)
+
+        if site_url:
+            domain_cache[employer] = site_url
+            save_domain_cache(domain_cache)
 
     if not site_url:
         print(
-            "No official athletics site found for {}".format(
+            "No athletics site found for {}".format(
                 employer
             )
         )
         return ""
 
-    logo_url = find_logo_on_athletics_site(
-        site_url
-    )
+    logo = find_logo(site_url)
 
-    if not logo_url:
+    if logo:
+        print(
+            "Logo for {}: {}".format(
+                employer,
+                logo
+            )
+        )
+    else:
         print(
             "No logo found on athletics site for {}".format(
                 employer
             )
         )
 
-    return logo_url
+    return logo
 
-# Retrieve the RSS feed.
-request = urllib.request.Request(
-    FEED_URL,
-    headers={
-        "User-Agent": "Mozilla/5.0"
-    }
-)
+# Load the RSS feed.
+feed = fetch(FEED_URL, timeout=30)
+root = ET.fromstring(feed)
 
-response = urllib.request.urlopen(
-    request,
-    timeout=30
-)
-
-xml = response.read()
-response.close()
-
-root = ET.fromstring(xml)
-
+domain_cache = load_domain_cache()
 jobs = []
 
 for item in root.iter():
@@ -387,21 +331,15 @@ for item in root.iter():
         continue
 
     if "|" in title:
-
-        parts = title.split(
-            "|",
-            1
-        )
-
+        parts = title.split("|", 1)
         title = parts[0].strip()
         employer = parts[1].strip()
-
     else:
-
         employer = ""
 
-    logo_url = get_logo_url(
-        employer
+    logo_url = get_logo(
+        employer,
+        domain_cache
     )
 
     jobs.append(
@@ -413,7 +351,7 @@ for item in root.iter():
         }
     )
 
-    if len(jobs) >= 10:
+    if len(jobs) >= MAX_JOBS:
         break
 
 with open(
@@ -421,7 +359,6 @@ with open(
     "w",
     encoding="utf-8"
 ) as file:
-
     json.dump(
         jobs,
         file,
