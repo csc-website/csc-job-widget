@@ -10,12 +10,10 @@ def clean(text):
 if not text:
 return ""
 
-```
 text = unescape(text)
 text = re.sub(r"<[^>]+>", "", text)
 
 return " ".join(text.split())
-```
 
 def fetch_url(url):
 request = urllib.request.Request(
@@ -34,10 +32,8 @@ headers={
 },
 )
 
-```
 with urllib.request.urlopen(request, timeout=30) as response:
     return response.read().decode("utf-8", errors="replace")
-```
 
 def extract_logo_url(html):
 patterns = [
@@ -47,7 +43,6 @@ r'<meta[^>]+name=["']twitter:image[^>]+content=["']([^%22']+)["']',
 r'<meta[^>]+content=["']([^%22']+)["'][^>]+name=["']twitter:image',
 ]
 
-```
 for pattern in patterns:
     match = re.search(pattern, html, re.IGNORECASE)
 
@@ -60,7 +55,6 @@ for pattern in patterns:
         return logo_url
 
 return ""
-```
 
 # ------------------------------------------------------------
 
@@ -95,7 +89,6 @@ jobs = []
 
 for item in root.iter():
 
-```
 if not item.tag.lower().endswith("item"):
     continue
 
@@ -256,7 +249,6 @@ json.dump(
     indent=2,
     ensure_ascii=False
 )
-```
 
 print("")
 print(
