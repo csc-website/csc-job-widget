@@ -6,59 +6,88 @@ import re
 
 FEED_URL = "https://careercenter.collegesportscommunicators.com/jobs?display=rss"
 
-
 def clean(text):
-    if not text:
-        return ""
+if not text:
+return ""
 
-    text = unescape(text)
-    text = re.sub(r"<[^>]+>", "", text)
+```
+text = unescape(text)
+text = re.sub(r"<[^>]+>", "", text)
 
-    return " ".join(text.split())
-
+return " ".join(text.split())
+```
 
 def fetch_url(url):
-    request = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "Mozilla/5.0"
-        }
-    )
+request = urllib.request.Request(
+url,
+headers={
+"User-Agent": "Mozilla/5.0"
+}
+)
 
-    with urllib.request.urlopen(request, timeout=30) as response:
-        return response.read().decode("utf-8", errors="replace")
+```
+with urllib.request.urlopen(request, timeout=30) as response:
+    return response.read().decode("utf-8", errors="replace")
+```
 
+def get_job_page_url(rss_url):
+"""
+Convert the RSS job URL to the normal job-page URL.
+
+```
+RSS example:
+/jobs/rss/22468412/job-title
+
+Normal page:
+/jobs/22468412/job-title
+"""
+
+return rss_url.replace(
+    "/jobs/rss/",
+    "/jobs/",
+    1
+)
+```
 
 def extract_logo(html):
-    # Look for Open Graph image metadata.
-    patterns = [
-        r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
-        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
-        r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']',
-        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']',
-    ]
+"""
+Look for the company's logo in the job page's
+Open Graph metadata.
+"""
 
-    for pattern in patterns:
-        match = re.search(pattern, html, re.IGNORECASE)
+```
+patterns = [
+    r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
+    r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
+    r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']',
+    r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']',
+]
 
-        if match:
-            logo_url = unescape(match.group(1).strip())
+for pattern in patterns:
+    match = re.search(pattern, html, re.IGNORECASE)
 
-            if logo_url.startswith("//"):
-                logo_url = "https:" + logo_url
+    if match:
+        logo_url = unescape(match.group(1).strip())
 
-            return logo_url
+        if logo_url.startswith("//"):
+            logo_url = "https:" + logo_url
 
-    return ""
+        return logo_url
 
+return ""
+```
+
+# Fetch the CSC Career Center RSS feed.
 
 request = urllib.request.Request(
-    FEED_URL,
-    headers={"User-Agent": "Mozilla/5.0"}
+FEED_URL,
+headers={
+"User-Agent": "Mozilla/5.0"
+}
 )
 
 with urllib.request.urlopen(request, timeout=30) as response:
-    xml = response.read()
+xml = response.read()
 
 root = ET.fromstring(xml)
 
@@ -66,59 +95,89 @@ jobs = []
 
 for item in root.iter():
 
-    if not item.tag.lower().endswith("item"):
-        continue
+```
+if not item.tag.lower().endswith("item"):
+    continue
 
-    title = ""
-    link = ""
+title = ""
+link = ""
 
-    for child in item:
-        tag = child.tag.lower()
+for child in item:
 
-        if tag.endswith("title"):
-            title = clean(child.text)
+    tag = child.tag.lower()
 
-        elif tag.endswith("link"):
-            link = clean(child.text)
+    if tag.endswith("title"):
+        title = clean(child.text)
 
-    if not title or not link:
-        continue
+    elif tag.endswith("link"):
+        link = clean(child.text)
 
-    # CSC places the employer after a | character.
-    if "|" in title:
-        title, employer = title.split("|", 1)
-        title = title.strip()
-        employer = employer.strip()
+if not title or not link:
+    continue
+
+
+# CSC places the employer after a | character.
+if "|" in title:
+
+    title, employer = title.split("|", 1)
+
+    title = title.strip()
+    employer = employer.strip()
+
+else:
+
+    employer = ""
+
+
+# The RSS link points to /jobs/rss/.
+# The logo is available on the normal /jobs/ page.
+job_page_url = get_job_page_url(link)
+
+logo_url = ""
+
+
+try:
+
+    page_html = fetch_url(job_page_url)
+
+    logo_url = extract_logo(page_html)
+
+    if logo_url:
+        print(f"Found logo for {employer}: {logo_url}")
     else:
-        employer = ""
+        print(f"No logo found for {employer}")
 
-    logo_url = ""
+except Exception as error:
 
-    try:
-        page_html = fetch_url(link)
-        logo_url = extract_logo(page_html)
-    except Exception as error:
-        print(f"Could not retrieve logo for {title}: {error}")
+    print(
+        f"Could not retrieve logo for {title}: {error}"
+    )
 
-    job = {
-        "title": title,
-        "employer": employer,
-        "link": link,
-        "company_logo_url": logo_url
-    }
 
-    jobs.append(job)
+job = {
+    "title": title,
+    "employer": employer,
+    "link": link,
+    "company_logo_url": logo_url
+}
 
-    if len(jobs) == 10:
-        break
+jobs.append(job)
 
+
+# Keep the widget at 10 jobs.
+if len(jobs) == 10:
+    break
+```
 
 with open("jobs.json", "w", encoding="utf-8") as file:
-    json.dump(
-        jobs,
-        file,
-        indent=2,
-        ensure_ascii=False
-    )
+
+```
+json.dump(
+    jobs,
+    file,
+    indent=2,
+    ensure_ascii=False
+)
+```
 
 print(f"Updated {len(jobs)} jobs.")
