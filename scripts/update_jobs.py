@@ -6,21 +6,18 @@ import re
 
 FEED_URL = "https://careercenter.collegesportscommunicators.com/jobs?display=rss"
 
-# Get the RSS feed
-
 request = urllib.request.Request(
 FEED_URL,
 headers={"User-Agent": "Mozilla/5.0"}
 )
 
-with urllib.request.urlopen(request, timeout=30) as response:
+response = urllib.request.urlopen(request, timeout=30)
 xml = response.read()
+response.close()
 
 root = ET.fromstring(xml)
 
 jobs = []
-
-# Process each job in the RSS feed
 
 for item in root.iter():
 
@@ -41,7 +38,6 @@ for child in item:
     elif tag.endswith("link"):
         link = child.text or ""
 
-# Clean the title and link
 title = unescape(title)
 title = re.sub(r"<[^>]+>", "", title)
 title = " ".join(title.split())
@@ -50,26 +46,16 @@ link = unescape(link).strip()
 if not title or not link:
     continue
 
-# The RSS title is formatted:
-# Job Title | Employer
 if "|" in title:
 
-    title, employer = title.split("|", 1)
-
-    title = title.strip()
-    employer = employer.strip()
+    parts = title.split("|", 1)
+    title = parts[0].strip()
+    employer = parts[1].strip()
 
 else:
 
     employer = ""
 
-# Convert the RSS job URL:
-#
-# /jobs/rss/22468412/job-title
-#
-# to the normal job page:
-#
-# /jobs/22468412/job-title
 job_page_url = link.replace(
     "/jobs/rss/",
     "/jobs/",
@@ -80,25 +66,23 @@ logo_url = ""
 
 try:
 
-    # Request the normal job page.
     page_request = urllib.request.Request(
         job_page_url,
-        headers={
-            "User-Agent": "Mozilla/5.0"
-        }
+        headers={"User-Agent": "Mozilla/5.0"}
     )
 
-    with urllib.request.urlopen(
+    page_response = urllib.request.urlopen(
         page_request,
         timeout=30
-    ) as page_response:
+    )
 
-        page_html = page_response.read().decode(
-            "utf-8",
-            errors="replace"
-        )
+    page_html = page_response.read().decode(
+        "utf-8",
+        errors="replace"
+    )
 
-    # Look for the Open Graph logo.
+    page_response.close()
+
     patterns = [
         r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
         r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
@@ -148,7 +132,6 @@ except Exception as error:
         )
     )
 
-# Add the job
 jobs.append(
     {
         "title": title,
@@ -158,27 +141,24 @@ jobs.append(
     }
 )
 
-# Keep the widget limited to 10 jobs.
 if len(jobs) >= 10:
     break
 ```
 
-# Write the updated jobs file.
-
-with open(
+file = open(
 "jobs.json",
 "w",
 encoding="utf-8"
-) as file:
-
-```
-json.dump(
-    jobs,
-    file,
-    indent=2,
-    ensure_ascii=False
 )
-```
+
+json.dump(
+jobs,
+file,
+indent=2,
+ensure_ascii=False
+)
+
+file.close()
 
 print(
 "Updated {} jobs.".format(
