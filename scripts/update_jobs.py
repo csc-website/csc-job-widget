@@ -7,8 +7,8 @@ import re
 FEED_URL = "https://careercenter.collegesportscommunicators.com/jobs?display=rss"
 
 request = urllib.request.Request(
-FEED_URL,
-headers={"User-Agent": "Mozilla/5.0"}
+    FEED_URL,
+    headers={"User-Agent": "Mozilla/5.0"}
 )
 
 response = urllib.request.urlopen(request, timeout=30)
@@ -20,146 +20,130 @@ root = ET.fromstring(xml)
 jobs = []
 
 for item in root.iter():
+    if not item.tag.lower().endswith("item"):
+        continue
 
-if not item.tag.lower().endswith("item"):
-    continue
+    title = ""
+    link = ""
 
-title = ""
-link = ""
+    for child in item:
+        tag = child.tag.lower()
 
-for child in item:
+        if tag.endswith("title"):
+            title = child.text or ""
 
-    tag = child.tag.lower()
+        elif tag.endswith("link"):
+            link = child.text or ""
 
-    if tag.endswith("title"):
-        title = child.text or ""
+    title = unescape(title)
+    title = re.sub(r"<[^>]+>", "", title)
+    title = " ".join(title.split())
+    link = unescape(link).strip()
 
-    elif tag.endswith("link"):
-        link = child.text or ""
+    if not title or not link:
+        continue
 
-title = unescape(title)
-title = re.sub(r"<[^>]+>", "", title)
-title = " ".join(title.split())
-link = unescape(link).strip()
-
-if not title or not link:
-    continue
-
-if "|" in title:
-
-    parts = title.split("|", 1)
-    title = parts[0].strip()
-    employer = parts[1].strip()
-
-else:
-
-    employer = ""
-
-job_page_url = link.replace(
-    "/jobs/rss/",
-    "/jobs/",
-    1
-)
-
-logo_url = ""
-
-try:
-
-    page_request = urllib.request.Request(
-        job_page_url,
-        headers={"User-Agent": "Mozilla/5.0"}
-    )
-
-    page_response = urllib.request.urlopen(
-        page_request,
-        timeout=30
-    )
-
-    page_html = page_response.read().decode(
-        "utf-8",
-        errors="replace"
-    )
-
-    page_response.close()
-
-    patterns = [
-        r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
-        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
-        r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']',
-        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']'
-    ]
-
-    for pattern in patterns:
-
-        match = re.search(
-            pattern,
-            page_html,
-            re.IGNORECASE
-        )
-
-        if match:
-
-            logo_url = unescape(
-                match.group(1).strip()
-            )
-
-            break
-
-    if logo_url:
-
-        print(
-            "Found logo for {}: {}".format(
-                employer,
-                logo_url
-            )
-        )
-
+    if "|" in title:
+        parts = title.split("|", 1)
+        title = parts[0].strip()
+        employer = parts[1].strip()
     else:
+        employer = ""
 
+    job_page_url = link.replace(
+        "/jobs/rss/",
+        "/jobs/",
+        1
+    )
+
+    logo_url = ""
+
+    try:
+        page_request = urllib.request.Request(
+            job_page_url,
+            headers={"User-Agent": "Mozilla/5.0"}
+        )
+
+        page_response = urllib.request.urlopen(
+            page_request,
+            timeout=30
+        )
+
+        page_html = page_response.read().decode(
+            "utf-8",
+            errors="replace"
+        )
+
+        page_response.close()
+
+        patterns = [
+            r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
+            r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']'
+        ]
+
+        for pattern in patterns:
+            match = re.search(
+                pattern,
+                page_html,
+                re.IGNORECASE
+            )
+
+            if match:
+                logo_url = unescape(
+                    match.group(1).strip()
+                )
+                break
+
+        if logo_url:
+            print(
+                "Found logo for {}: {}".format(
+                    employer,
+                    logo_url
+                )
+            )
+        else:
+            print(
+                "No logo found for {}".format(
+                    employer
+                )
+            )
+
+    except Exception as error:
         print(
-            "No logo found for {}".format(
-                employer
+            "Could not retrieve logo for {}: {}".format(
+                employer,
+                error
             )
         )
 
-except Exception as error:
-
-    print(
-        "Could not retrieve logo for {}: {}".format(
-            employer,
-            error
-        )
+    jobs.append(
+        {
+            "title": title,
+            "employer": employer,
+            "link": link,
+            "company_logo_url": logo_url
+        }
     )
 
-jobs.append(
-    {
-        "title": title,
-        "employer": employer,
-        "link": link,
-        "company_logo_url": logo_url
-    }
-)
+    if len(jobs) >= 10:
+        break
 
-if len(jobs) >= 10:
-    break
-
-file = open(
-"jobs.json",
-"w",
-encoding="utf-8"
-)
-
-json.dump(
-jobs,
-file,
-indent=2,
-ensure_ascii=False
-)
-
-file.close()
+with open(
+    "jobs.json",
+    "w",
+    encoding="utf-8"
+) as file:
+    json.dump(
+        jobs,
+        file,
+        indent=2,
+        ensure_ascii=False
+    )
 
 print(
-"Updated {} jobs.".format(
-len(jobs)
-)
+    "Updated {} jobs.".format(
+        len(jobs)
+    )
 )
