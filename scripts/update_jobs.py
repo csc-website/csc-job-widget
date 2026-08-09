@@ -219,29 +219,160 @@ def find_logo(site_url):
         )
         return ""
 
-    # Prefer actual logo image assets.
-    patterns = [
-        r'<img[^>]+src=["\']([^"\']+)["\'][^>]*(?:class|id|alt)=["\'][^"\']*logo[^"\']*["\']',
-        r'<img[^>]+(?:class|id|alt)=["\'][^"\']*logo[^"\']*["\'][^>]+src=["\']([^"\']+)["\']',
-        r'<img[^>]+src=["\']([^"\']*logo[^"\']*)["\'][^>]*>',
-    ]
+    def is_bad_image(url):
+        lower = url.lower()
 
-    for pattern in patterns:
-        match = re.search(
-            pattern,
-            html,
+        bad_terms = [
+            "sponsor",
+            "smiths",
+            "banner",
+            "hero",
+            "homepage",
+            "visit",
+            "photo",
+            "news",
+            "story",
+            "article",
+            "background",
+            "ad-",
+            "advert",
+        ]
+
+        return any(
+            term in lower
+            for term in bad_terms
+        )
+
+    def score_logo(url, context=""):
+        lower = url.lower() + " " + context.lower()
+        score = 0
+
+        preferred_terms = [
+            "nav_logo",
+            "site.png",
+            "site.svg",
+            "logo.svg",
+            "logo.png",
+            "logo.webp",
+            "wordmark",
+            "athletics-logo",
+            "team-logo",
+            "primary-logo",
+        ]
+
+        for term in preferred_terms:
+            if term in lower:
+                score += 10
+
+        if "logo" in lower:
+            score += 6
+
+        if "wordmark" in lower:
+            score += 4
+
+        if is_bad_image(url):
+            score -= 50
+
+        # Large content images are less likely to be the navigation mark.
+        if "1000/1000" in lower:
+            score -= 5
+
+        return score
+
+    candidates = []
+
+    # Inspect actual image tags and score them instead of taking the first
+    # image that happens to contain "logo".
+    img_pattern = re.compile(
+        r"<img\b[^>]*>",
+        re.IGNORECASE
+    )
+
+    for tag in img_pattern.findall(html):
+
+        src_match = re.search(
+            r'\bsrc=["\']([^"\']+)["\']',
+            tag,
             re.IGNORECASE
         )
-        if match:
-            logo = urllib.parse.urljoin(
-                site_url,
-                unescape(match.group(1).strip())
-            )
-            if logo.startswith("http"):
-                return logo
 
-    # Open Graph image is a useful fallback and is usually a high-quality
-    # athletics brand image.
+        if not src_match:
+            continue
+
+        src = unescape(
+            src_match.group(1).strip()
+        )
+
+        if not src or src.startswith("data:"):
+            continue
+
+        alt_match = re.search(
+            r'\balt=["\']([^"\']*)["\']',
+            tag,
+            re.IGNORECASE
+        )
+
+        class_match = re.search(
+            r'\bclass=["\']([^"\']*)["\']',
+            tag,
+            re.IGNORECASE
+        )
+
+        id_match = re.search(
+            r'\bid=["\']([^"\']*)["\']',
+            tag,
+            re.IGNORECASE
+        )
+
+        context = " ".join(
+            [
+                alt_match.group(1) if alt_match else "",
+                class_match.group(1) if class_match else "",
+                id_match.group(1) if id_match else "",
+                src,
+            ]
+        )
+
+        logo = urllib.parse.urljoin(
+            site_url,
+            src
+        )
+
+        if not logo.startswith("http"):
+            continue
+
+        score = score_logo(
+            logo,
+            context
+        )
+
+        # Do not consider ordinary images unless there is strong evidence
+        # that the image is a logo.
+        if score < 6:
+            continue
+
+        candidates.append(
+            (score, logo)
+        )
+
+    if candidates:
+        candidates.sort(
+            key=lambda item: item[0],
+            reverse=True
+        )
+
+        logo = candidates[0][1]
+
+        print(
+            "Selected athletics logo: {}".format(
+                logo
+            )
+        )
+
+        return logo
+
+    # Open Graph image is a fallback only. Reject obvious photos, sponsors,
+    # banners, and other content images.
     meta_patterns = [
         r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
         r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
@@ -253,13 +384,29 @@ def find_logo(site_url):
             html,
             re.IGNORECASE
         )
+
         if match:
             image = urllib.parse.urljoin(
                 site_url,
                 unescape(match.group(1).strip())
             )
-            if image.startswith("http"):
+
+            if (
+                image.startswith("http")
+                and not is_bad_image(image)
+            ):
+                print(
+                    "Using athletics Open Graph image: {}".format(
+                        image
+                    )
+                )
                 return image
+
+    print(
+        "No suitable athletics logo found at {}".format(
+            site_url
+        )
+    )
 
     return ""
 
