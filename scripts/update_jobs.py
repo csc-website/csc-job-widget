@@ -33,15 +33,9 @@ with urllib.request.urlopen(request, timeout=30) as response:
 def get_job_page_url(rss_url):
 """
 Convert the RSS job URL to the normal job-page URL.
-
-```
-RSS example:
-/jobs/rss/22468412/job-title
-
-Normal page:
-/jobs/22468412/job-title
 """
 
+```
 return rss_url.replace(
     "/jobs/rss/",
     "/jobs/",
@@ -64,10 +58,16 @@ patterns = [
 ]
 
 for pattern in patterns:
-    match = re.search(pattern, html, re.IGNORECASE)
+    match = re.search(
+        pattern,
+        html,
+        re.IGNORECASE
+    )
 
     if match:
-        logo_url = unescape(match.group(1).strip())
+        logo_url = unescape(
+            match.group(1).strip()
+        )
 
         if logo_url.startswith("//"):
             logo_url = "https:" + logo_url
@@ -77,8 +77,6 @@ for pattern in patterns:
 return ""
 ```
 
-# Fetch the CSC Career Center RSS feed.
-
 request = urllib.request.Request(
 FEED_URL,
 headers={
@@ -86,8 +84,14 @@ headers={
 }
 )
 
-with urllib.request.urlopen(request, timeout=30) as response:
+with urllib.request.urlopen(
+request,
+timeout=30
+) as response:
+
+```
 xml = response.read()
+```
 
 root = ET.fromstring(xml)
 
@@ -116,10 +120,12 @@ if not title or not link:
     continue
 
 
-# CSC places the employer after a | character.
 if "|" in title:
 
-    title, employer = title.split("|", 1)
+    title, employer = title.split(
+        "|",
+        1
+    )
 
     title = title.strip()
     employer = employer.strip()
@@ -129,8 +135,6 @@ else:
     employer = ""
 
 
-# The RSS link points to /jobs/rss/.
-# The logo is available on the normal /jobs/ page.
 job_page_url = get_job_page_url(link)
 
 logo_url = ""
@@ -138,14 +142,25 @@ logo_url = ""
 
 try:
 
-    page_html = fetch_url(job_page_url)
+    page_html = fetch_url(
+        job_page_url
+    )
 
-    logo_url = extract_logo(page_html)
+    logo_url = extract_logo(
+        page_html
+    )
 
     if logo_url:
-        print(f"Found logo for {employer}: {logo_url}")
+
+        print(
+            f"Found logo for {employer}: {logo_url}"
+        )
+
     else:
-        print(f"No logo found for {employer}")
+
+        print(
+            f"No logo found for {employer}"
+        )
 
 except Exception as error:
 
@@ -164,12 +179,15 @@ job = {
 jobs.append(job)
 
 
-# Keep the widget at 10 jobs.
 if len(jobs) == 10:
     break
 ```
 
-with open("jobs.json", "w", encoding="utf-8") as file:
+with open(
+"jobs.json",
+"w",
+encoding="utf-8"
+) as file:
 
 ```
 json.dump(
@@ -180,4 +198,6 @@ json.dump(
 )
 ```
 
-print(f"Updated {len(jobs)} jobs.")
+print(
+f"Updated {len(jobs)} jobs."
+)
