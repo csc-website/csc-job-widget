@@ -6,92 +6,13 @@ import re
 
 FEED_URL = "https://careercenter.collegesportscommunicators.com/jobs?display=rss"
 
-def clean(text):
-if not text:
-return ""
-
-```
-text = unescape(text)
-text = re.sub(r"<[^>]+>", "", text)
-
-return " ".join(text.split())
-```
-
-def fetch_url(url):
 request = urllib.request.Request(
-url,
-headers={
-"User-Agent": "Mozilla/5.0"
-}
+    FEED_URL,
+    headers={"User-Agent": "Mozilla/5.0"}
 )
 
-```
 with urllib.request.urlopen(request, timeout=30) as response:
-    return response.read().decode("utf-8", errors="replace")
-```
-
-def get_job_page_url(rss_url):
-"""
-Convert the RSS job URL to the normal job-page URL.
-"""
-
-```
-return rss_url.replace(
-    "/jobs/rss/",
-    "/jobs/",
-    1
-)
-```
-
-def extract_logo(html):
-"""
-Look for the company's logo in the job page's
-Open Graph metadata.
-"""
-
-```
-patterns = [
-    r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
-    r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
-    r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']',
-    r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']',
-]
-
-for pattern in patterns:
-    match = re.search(
-        pattern,
-        html,
-        re.IGNORECASE
-    )
-
-    if match:
-        logo_url = unescape(
-            match.group(1).strip()
-        )
-
-        if logo_url.startswith("//"):
-            logo_url = "https:" + logo_url
-
-        return logo_url
-
-return ""
-```
-
-request = urllib.request.Request(
-FEED_URL,
-headers={
-"User-Agent": "Mozilla/5.0"
-}
-)
-
-with urllib.request.urlopen(
-request,
-timeout=30
-) as response:
-
-```
-xml = response.read()
-```
+    xml = response.read()
 
 root = ET.fromstring(xml)
 
@@ -99,105 +20,133 @@ jobs = []
 
 for item in root.iter():
 
-```
-if not item.tag.lower().endswith("item"):
-    continue
+    if not item.tag.lower().endswith("item"):
+        continue
 
-title = ""
-link = ""
+    title = ""
+    link = ""
 
-for child in item:
+    for child in item:
 
-    tag = child.tag.lower()
+        tag = child.tag.lower()
 
-    if tag.endswith("title"):
-        title = clean(child.text)
+        if tag.endswith("title"):
+            title = child.text or ""
 
-    elif tag.endswith("link"):
-        link = clean(child.text)
+        elif tag.endswith("link"):
+            link = child.text or ""
 
-if not title or not link:
-    continue
+    title = unescape(title)
+    link = unescape(link)
 
+    title = re.sub(r"<[^>]+>", "", title)
+    title = " ".join(title.split())
+    link = link.strip()
 
-if "|" in title:
+    if not title or not link:
+        continue
 
-    title, employer = title.split(
-        "|",
+    if "|" in title:
+        title, employer = title.split("|", 1)
+        title = title.strip()
+        employer = employer.strip()
+    else:
+        employer = ""
+
+    job_page_url = link.replace(
+        "/jobs/rss/",
+        "/jobs/",
         1
     )
 
-    title = title.strip()
-    employer = employer.strip()
+    logo_url = ""
 
-else:
+    try:
 
-    employer = ""
-
-
-job_page_url = get_job_page_url(link)
-
-logo_url = ""
-
-
-try:
-
-    page_html = fetch_url(
-        job_page_url
-    )
-
-    logo_url = extract_logo(
-        page_html
-    )
-
-    if logo_url:
-
-        print(
-            f"Found logo for {employer}: {logo_url}"
+        page_request = urllib.request.Request(
+            job_page_url,
+            headers={"User-Agent": "Mozilla/5.0"}
         )
 
-    else:
+        with urllib.request.urlopen(
+            page_request,
+            timeout=30
+        ) as page_response:
+
+            page_html = page_response.read().decode(
+                "utf-8",
+                errors="replace"
+            )
+
+        patterns = [
+            r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
+            r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']'
+        ]
+
+        for pattern in patterns:
+
+            match = re.search(
+                pattern,
+                page_html,
+                re.IGNORECASE
+            )
+
+            if match:
+                logo_url = unescape(
+                    match.group(1).strip()
+                )
+                break
+
+        if logo_url:
+            print(
+                "Found logo for {}: {}".format(
+                    employer,
+                    logo_url
+                )
+            )
+        else:
+            print(
+                "No logo found for {}".format(
+                    employer
+                )
+            )
+
+    except Exception as error:
 
         print(
-            f"No logo found for {employer}"
+            "Could not retrieve logo for {}: {}".format(
+                employer,
+                error
+            )
         )
 
-except Exception as error:
+    jobs.append({
+        "title": title,
+        "employer": employer,
+        "link": link,
+        "company_logo_url": logo_url
+    })
 
-    print(
-        f"Could not retrieve logo for {title}: {error}"
-    )
-
-
-job = {
-    "title": title,
-    "employer": employer,
-    "link": link,
-    "company_logo_url": logo_url
-}
-
-jobs.append(job)
-
-
-if len(jobs) == 10:
-    break
-```
+    if len(jobs) == 10:
+        break
 
 with open(
-"jobs.json",
-"w",
-encoding="utf-8"
+    "jobs.json",
+    "w",
+    encoding="utf-8"
 ) as file:
 
-```
-json.dump(
-    jobs,
-    file,
-    indent=2,
-    ensure_ascii=False
-)
-```
+    json.dump(
+        jobs,
+        file,
+        indent=2,
+        ensure_ascii=False
+    )
 
 print(
-f"Updated {len(jobs)} jobs."
+    "Updated {} jobs.".format(
+        len(jobs)
+    )
 )
