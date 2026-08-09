@@ -7,15 +7,13 @@ import re
 FEED_URL = "https://careercenter.collegesportscommunicators.com/jobs?display=rss"
 
 def clean(text):
-if not text:
-return ""
+    if not text:
+        return ""
 
-```
-text = unescape(text)
-text = re.sub(r"<[^>]+>", "", text)
+    text = unescape(text)
+    text = re.sub(r"<[^>]+>", "", text)
 
-return " ".join(text.split())
-```
+    return " ".join(text.split())
 
 def fetch_url(url):
 request = urllib.request.Request(
@@ -27,10 +25,8 @@ headers={
 },
 )
 
-```
 with urllib.request.urlopen(request, timeout=30) as response:
     return response.read().decode("utf-8", errors="replace")
-```
 
 def extract_logo_url(html):
 patterns = [
@@ -40,7 +36,6 @@ patterns = [
 """<meta[^>]+content=["']([^%22']+)["'][^>]+name=["']twitter:image""",
 ]
 
-```
 for pattern in patterns:
     match = re.search(pattern, html, re.IGNORECASE)
 
@@ -53,7 +48,6 @@ for pattern in patterns:
         return logo_url
 
 return ""
-```
 
 # Download RSS feed
 
@@ -76,7 +70,6 @@ jobs = []
 
 for item in root.iter():
 
-```
 if not item.tag.lower().endswith("item"):
     continue
 
@@ -204,7 +197,6 @@ jobs.append(
 
 if len(jobs) >= 10:
     break
-```
 
 # Write jobs.json
 
@@ -214,14 +206,12 @@ with open(
 encoding="utf-8"
 ) as file:
 
-```
 json.dump(
     jobs,
     file,
     indent=2,
     ensure_ascii=False
 )
-```
 
 print("")
 print(
