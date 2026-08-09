@@ -204,7 +204,7 @@ def search_athletics_site(employer):
 
     return ""
 
-def find_logo(site_url):
+def find_logo(site_url, employer):
     try:
         html = fetch(site_url).decode(
             "utf-8",
@@ -218,6 +218,49 @@ def find_logo(site_url):
             )
         )
         return ""
+
+    # Words that identify the employer's athletics identity. These are
+    # derived from the employer name plus common athletics naming patterns.
+    employer_words = set(
+        re.findall(
+            r"[a-z0-9]+",
+            employer.lower()
+        )
+    )
+
+    stop_words = {
+        "university",
+        "college",
+        "athletics",
+        "athletic",
+        "state",
+        "of",
+        "the",
+        "and",
+        "at",
+        "campus",
+    }
+
+    identity_words = {
+        word
+        for word in employer_words
+        if word not in stop_words and len(word) >= 3
+    }
+
+    # Mascot / identity terms commonly present in official athletics
+    # branding. These supplement, rather than replace, employer matching.
+    mascot_terms = {
+        "bulldog", "bulldogs",
+        "sooner", "sooners",
+        "ute", "utes",
+        "flame", "flames",
+        "seahawk", "seahawks",
+        "shockers",
+        "royal", "royals",
+        "wildcat", "wildcats",
+        "nittany", "lion", "lions",
+        "wildcat", "wildcats",
+    }
 
     def is_bad_image(url):
         lower = url.lower()
@@ -234,8 +277,10 @@ def find_logo(site_url):
             "story",
             "article",
             "background",
-            "ad-",
             "advert",
+            "ad-",
+            "ncaalogo",
+            "ncaa-logo",
         ]
 
         return any(
@@ -243,9 +288,34 @@ def find_logo(site_url):
             for term in bad_terms
         )
 
-    def score_logo(url, context=""):
-        lower = url.lower() + " " + context.lower()
+    def text_tokens(value):
+        return set(
+            re.findall(
+                r"[a-z0-9]+",
+                value.lower()
+            )
+        )
+
+    def identity_score(url, context):
+        lower = (
+            url.lower()
+            + " "
+            + context.lower()
+        )
+
+        tokens = text_tokens(lower)
         score = 0
+
+        # Employer-name matches are strong evidence.
+        for word in identity_words:
+            if word in tokens:
+                score += 15
+
+        # Mascot/brand matches are useful when the employer name itself
+        # does not appear in the image filename or alt text.
+        for word in mascot_terms:
+            if word in tokens:
+                score += 8
 
         preferred_terms = [
             "nav_logo",
@@ -262,33 +332,27 @@ def find_logo(site_url):
 
         for term in preferred_terms:
             if term in lower:
-                score += 10
+                score += 8
 
         if "logo" in lower:
-            score += 6
+            score += 5
 
         if "wordmark" in lower:
-            score += 4
+            score += 3
 
         if is_bad_image(url):
-            score -= 50
-
-        # Large content images are less likely to be the navigation mark.
-        if "1000/1000" in lower:
-            score -= 5
+            score -= 60
 
         return score
 
     candidates = []
 
-    # Inspect actual image tags and score them instead of taking the first
-    # image that happens to contain "logo".
-    img_pattern = re.compile(
+    # Inspect actual image tags and evaluate identity, not just filename.
+    for tag in re.findall(
         r"<img\b[^>]*>",
+        html,
         re.IGNORECASE
-    )
-
-    for tag in img_pattern.findall(html):
+    ):
 
         src_match = re.search(
             r'\bsrc=["\']([^"\']+)["\']',
@@ -341,19 +405,16 @@ def find_logo(site_url):
         if not logo.startswith("http"):
             continue
 
-        score = score_logo(
+        score = identity_score(
             logo,
             context
         )
 
-        # Do not consider ordinary images unless there is strong evidence
-        # that the image is a logo.
-        if score < 6:
-            continue
-
-        candidates.append(
-            (score, logo)
-        )
+        # Require some evidence of actual logo/branding identity.
+        if score >= 12:
+            candidates.append(
+                (score, logo)
+            )
 
     if candidates:
         candidates.sort(
@@ -364,47 +425,55 @@ def find_logo(site_url):
         logo = candidates[0][1]
 
         print(
-            "Selected athletics logo: {}".format(
+            "Selected verified athletics logo for {}: {}".format(
+                employer,
                 logo
             )
         )
 
         return logo
 
-    # Open Graph image is a fallback only. Reject obvious photos, sponsors,
-    # banners, and other content images.
-    meta_patterns = [
-        r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
-        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
+    # Try structured metadata containing a logo.
+    metadata_patterns = [
+        r'<meta[^>]+(?:name|property)=["\'](?:og:image|twitter:image)["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:name|property)=["\'](?:og:image|twitter:image)["\']',
     ]
 
-    for pattern in meta_patterns:
+    for pattern in metadata_patterns:
         match = re.search(
             pattern,
             html,
             re.IGNORECASE
         )
 
-        if match:
-            image = urllib.parse.urljoin(
-                site_url,
-                unescape(match.group(1).strip())
-            )
+        if not match:
+            continue
 
-            if (
-                image.startswith("http")
-                and not is_bad_image(image)
-            ):
-                print(
-                    "Using athletics Open Graph image: {}".format(
-                        image
-                    )
+        image = urllib.parse.urljoin(
+            site_url,
+            unescape(match.group(1).strip())
+        )
+
+        if not image.startswith("http"):
+            continue
+
+        score = identity_score(
+            image,
+            image
+        )
+
+        if score >= 12:
+            print(
+                "Using verified athletics metadata image for {}: {}".format(
+                    employer,
+                    image
                 )
-                return image
+            )
+            return image
 
     print(
-        "No suitable athletics logo found at {}".format(
-            site_url
+        "No verified employer-specific athletics logo found for {}".format(
+            employer
         )
     )
 
@@ -428,7 +497,7 @@ def get_logo(employer, domain_cache):
         )
         return ""
 
-    logo = find_logo(site_url)
+    logo = find_logo(site_url, employer)
 
     if logo:
         print(
