@@ -1,4 +1,3 @@
-```python
 import json
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -307,4 +306,3 @@ with open(
 
 print("")
 print("Updated {} jobs.".format(len(jobs)))
-```
