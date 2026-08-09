@@ -21,7 +21,6 @@ jobs = []
 
 for item in root.iter():
 
-```
 if not item.tag.lower().endswith("item"):
     continue
 
@@ -143,7 +142,6 @@ jobs.append(
 
 if len(jobs) >= 10:
     break
-```
 
 file = open(
 "jobs.json",
