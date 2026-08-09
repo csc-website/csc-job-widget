@@ -219,8 +219,6 @@ def find_logo(site_url, employer):
         )
         return ""
 
-    # Words that identify the employer's athletics identity. These are
-    # derived from the employer name plus common athletics naming patterns.
     employer_words = set(
         re.findall(
             r"[a-z0-9]+",
@@ -247,8 +245,6 @@ def find_logo(site_url, employer):
         if word not in stop_words and len(word) >= 3
     }
 
-    # Mascot / identity terms commonly present in official athletics
-    # branding. These supplement, rather than replace, employer matching.
     mascot_terms = {
         "bulldog", "bulldogs",
         "sooner", "sooners",
@@ -281,6 +277,13 @@ def find_logo(site_url, employer):
             "ad-",
             "ncaalogo",
             "ncaa-logo",
+            "top_promo",
+            "promo",
+            "promotion",
+            "parallax",
+            "social",
+            "og-image",
+            "open-graph",
         ]
 
         return any(
@@ -306,19 +309,19 @@ def find_logo(site_url, employer):
         tokens = text_tokens(lower)
         score = 0
 
-        # Employer-name matches are strong evidence.
         for word in identity_words:
             if word in tokens:
                 score += 15
 
-        # Mascot/brand matches are useful when the employer name itself
-        # does not appear in the image filename or alt text.
         for word in mascot_terms:
             if word in tokens:
                 score += 8
 
+        # Strong preference for actual site/header branding assets.
         preferred_terms = [
             "nav_logo",
+            "logo_main",
+            "psu_logo",
             "site.png",
             "site.svg",
             "logo.svg",
@@ -332,7 +335,7 @@ def find_logo(site_url, employer):
 
         for term in preferred_terms:
             if term in lower:
-                score += 8
+                score += 10
 
         if "logo" in lower:
             score += 5
@@ -340,14 +343,20 @@ def find_logo(site_url, employer):
         if "wordmark" in lower:
             score += 3
 
+        if "header" in lower:
+            score += 4
+
+        if "navigation" in lower:
+            score += 4
+
         if is_bad_image(url):
-            score -= 60
+            score -= 80
 
         return score
 
     candidates = []
 
-    # Inspect actual image tags and evaluate identity, not just filename.
+    # First inspect explicit image tags.
     for tag in re.findall(
         r"<img\b[^>]*>",
         html,
@@ -410,13 +419,57 @@ def find_logo(site_url, employer):
             context
         )
 
-        # Require some evidence of actual logo/branding identity.
         if score >= 12:
             candidates.append(
                 (score, logo)
             )
 
+    # Modern athletics sites frequently preload SVG/PNG assets or place
+    # their logo in inline markup rather than a simple <img>. Search the
+    # complete page source for explicit logo asset URLs too.
+    asset_patterns = [
+        r'https?://[^"\'<>\s]+(?:nav_logo|logo_main|psu_logo|primary-logo|athletics-logo|team-logo)[^"\'<>\s]*\.(?:svg|png|webp|jpg|jpeg)',
+        r'["\']([^"\']*(?:nav_logo|logo_main|psu_logo|primary-logo|athletics-logo|team-logo)[^"\']*\.(?:svg|png|webp|jpg|jpeg))["\']',
+        r'["\']([^"\']*logo[^"\']*\.(?:svg|png|webp|jpg|jpeg))["\']',
+    ]
+
+    for pattern in asset_patterns:
+
+        for match in re.finditer(
+            pattern,
+            html,
+            re.IGNORECASE
+        ):
+
+            asset = match.group(1) if match.lastindex else match.group(0)
+
+            asset = unescape(
+                asset.strip(
+                    "\"'"
+                )
+            )
+
+            logo = urllib.parse.urljoin(
+                site_url,
+                asset
+            )
+
+            if not logo.startswith("http"):
+                continue
+
+            score = identity_score(
+                logo,
+                logo
+            )
+
+            if score >= 12:
+                candidates.append(
+                    (score + 3, logo)
+                )
+
     if candidates:
+        # Prefer the strongest candidate. If scores tie, prefer the one
+        # whose filename explicitly identifies it as a main/nav/header logo.
         candidates.sort(
             key=lambda item: item[0],
             reverse=True
@@ -433,13 +486,15 @@ def find_logo(site_url, employer):
 
         return logo
 
-    # Try structured metadata containing a logo.
+    # Structured metadata is only a fallback and must still pass identity
+    # checks. Promotional images are deliberately rejected.
     metadata_patterns = [
         r'<meta[^>]+(?:name|property)=["\'](?:og:image|twitter:image)["\'][^>]+content=["\']([^"\']+)["\']',
         r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:name|property)=["\'](?:og:image|twitter:image)["\']',
     ]
 
     for pattern in metadata_patterns:
+
         match = re.search(
             pattern,
             html,
