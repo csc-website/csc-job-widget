@@ -1,221 +1,283 @@
 import json
+import re
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 from html import unescape
-import re
+
 
 FEED_URL = "https://careercenter.collegesportscommunicators.com/jobs?display=rss"
+MAX_JOBS = 10
 
-def clean(text):
+USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/151.0 Safari/537.36"
+)
+
+
+def fetch(url, timeout=30):
+    request = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": USER_AGENT,
+            "Accept": (
+                "text/html,application/xhtml+xml,application/xml;"
+                "q=0.9,*/*;q=0.8"
+            ),
+            "Accept-Language": "en-US,en;q=0.9",
+        },
+    )
+
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return response.read()
+
+
+def clean_text(text):
     if not text:
         return ""
 
     text = unescape(text)
     text = re.sub(r"<[^>]+>", "", text)
-
     return " ".join(text.split())
 
-def fetch_url(url):
-request = urllib.request.Request(
-url,
-headers={
-"User-Agent": "Mozilla/5.0",
-"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-"Accept-Language": "en-US,en;q=0.9",
-},
-)
 
-with urllib.request.urlopen(request, timeout=30) as response:
-    return response.read().decode("utf-8", errors="replace")
+def make_job_page_url(link):
+    if "/jobs/rss/" in link:
+        return link.replace("/jobs/rss/", "/jobs/", 1)
 
-def extract_logo_url(html):
-patterns = [
-"""<meta[^>]+property=["']og:image[^>]+content=["']([^%22']+)["']""",
-"""<meta[^>]+content=["']([^%22']+)["'][^>]+property=["']og:image""",
-"""<meta[^>]+name=["']twitter:image[^>]+content=["']([^%22']+)["']""",
-"""<meta[^>]+content=["']([^%22']+)["'][^>]+name=["']twitter:image""",
-]
-
-for pattern in patterns:
-    match = re.search(pattern, html, re.IGNORECASE)
-
-    if match:
-        logo_url = unescape(match.group(1).strip())
-
-        if logo_url.startswith("//"):
-            logo_url = "https:" + logo_url
-
-        return logo_url
-
-return ""
-
-# Download RSS feed
-
-request = urllib.request.Request(
-FEED_URL,
-headers={
-"User-Agent": "Mozilla/5.0",
-"Accept": "application/rss+xml, application/xml, text/xml, */*",
-},
-)
-
-with urllib.request.urlopen(request, timeout=30) as response:
-xml = response.read()
-
-root = ET.fromstring(xml)
-
-jobs = []
-
-# Process RSS jobs
-
-for item in root.iter():
-
-if not item.tag.lower().endswith("item"):
-    continue
-
-title = ""
-link = ""
-
-for child in item:
-
-    tag = child.tag.lower()
-
-    if tag.endswith("title"):
-        title = clean(child.text)
-
-    elif tag.endswith("link"):
-        link = clean(child.text)
-
-if not title or not link:
-    continue
+    return link
 
 
-# Separate job title and employer
+def absolute_url(url, base_url):
+    if not url:
+        return ""
 
-if "|" in title:
+    url = unescape(url).strip()
 
-    title, employer = title.split("|", 1)
+    if url.startswith("//"):
+        return "https:" + url
 
-    title = title.strip()
-    employer = employer.strip()
-
-else:
-
-    employer = ""
+    return urllib.parse.urljoin(base_url, url)
 
 
-# Convert RSS URL to normal job URL
+def extract_image_from_rss(item, job_url):
+    """
+    Look for an image supplied directly inside the RSS item.
+    """
+    item_xml = ET.tostring(
+        item,
+        encoding="unicode"
+    )
 
-job_page_url = link.replace(
-    "/jobs/rss/",
-    "/jobs/",
-    1
-)
+    patterns = [
+        r'<[^>]+(?:media:content|media:thumbnail|enclosure)'
+        r'[^>]+url=["\']([^"\']+)["\']',
+        r'<img[^>]+src=["\']([^"\']+)["\']',
+        r'<img[^>]+src=([^ >]+)',
+    ]
+
+    for pattern in patterns:
+        match = re.search(
+            pattern,
+            item_xml,
+            re.IGNORECASE
+        )
+
+        if match:
+            image_url = absolute_url(
+                match.group(1).strip("\"'"),
+                job_url
+            )
+
+            if image_url.startswith("http"):
+                return image_url
+
+    return ""
 
 
-print("")
-print("Checking normal Career Center page for {}:".format(employer))
-print(job_page_url)
+def extract_image_from_job_page(job_url):
+    """
+    Look for an Open Graph or Twitter image on the CSC Career Center
+    job page.
+    """
+    try:
+        html = fetch(job_url).decode(
+            "utf-8",
+            errors="replace"
+        )
+    except Exception as error:
+        print(
+            "Could not retrieve Career Center page for {}: {}".format(
+                job_url,
+                error
+            )
+        )
+        return ""
+
+    patterns = [
+        r'<meta[^>]+property=["\']og:image["\']'
+        r'[^>]+content=["\']([^"\']+)["\']',
+
+        r'<meta[^>]+content=["\']([^"\']+)["\']'
+        r'[^>]+property=["\']og:image["\']',
+
+        r'<meta[^>]+name=["\']twitter:image["\']'
+        r'[^>]+content=["\']([^"\']+)["\']',
+
+        r'<meta[^>]+content=["\']([^"\']+)["\']'
+        r'[^>]+name=["\']twitter:image["\']',
+    ]
+
+    for pattern in patterns:
+        match = re.search(
+            pattern,
+            html,
+            re.IGNORECASE
+        )
+
+        if match:
+            image_url = absolute_url(
+                match.group(1),
+                job_url
+            )
+
+            if image_url.startswith("http"):
+                return image_url
+
+    return ""
 
 
-logo_url = ""
+def get_logo_url(item, job_url, employer):
+    """
+    Try to obtain a logo from the CSC Career Center itself.
 
+    We deliberately do not search other websites. If the Career Center
+    does not provide a logo, the job is still included normally.
+    """
 
-# Retrieve normal job page
-
-try:
-
-    page_html = fetch_url(job_page_url)
-
-    logo_url = extract_logo_url(page_html)
-
+    logo_url = extract_image_from_rss(
+        item,
+        job_url
+    )
 
     if logo_url:
-
         print(
-            "Career Center logo found for {}: {}".format(
+            "Career Center logo for {}: {}".format(
                 employer,
                 logo_url
             )
         )
+        return logo_url
 
-    elif "showLogo.cfm" in page_html:
+    logo_url = extract_image_from_job_page(
+        job_url
+    )
 
+    if logo_url:
         print(
-            "showLogo.cfm found for {}, but the logo URL "
-            "could not be extracted.".format(
-                employer
+            "Career Center page logo for {}: {}".format(
+                employer,
+                logo_url
             )
         )
-
-    elif (
-        "captcha" in page_html.lower()
-        or "bot check" in page_html.lower()
-        or "checking your browser" in page_html.lower()
-        or "javascript required" in page_html.lower()
-    ):
-
-        print(
-            "Career Center returned a bot/challenge page "
-            "for {}".format(
-                employer
-            )
-        )
-
-    else:
-
-        print(
-            "No Career Center logo found for {}".format(
-                employer
-            )
-        )
-
-
-except Exception as error:
+        return logo_url
 
     print(
-        "Could not retrieve Career Center page for {}: {}".format(
-            employer,
-            error
+        "No Career Center logo found for {}".format(
+            employer
+        )
+    )
+
+    return ""
+
+
+def main():
+    print("Loading CSC Career Center RSS feed...")
+
+    feed = fetch(FEED_URL)
+    root = ET.fromstring(feed)
+
+    jobs = []
+
+    for item in root.iter():
+        if not item.tag.lower().endswith("item"):
+            continue
+
+        title = ""
+        link = ""
+
+        for child in item:
+            tag = child.tag.lower()
+
+            if tag.endswith("title"):
+                title = child.text or ""
+
+            elif tag.endswith("link"):
+                link = child.text or ""
+
+        title = clean_text(title)
+        link = unescape(link).strip()
+
+        if not title or not link:
+            continue
+
+        if "|" in title:
+            parts = title.split("|", 1)
+
+            title = parts[0].strip()
+            employer = parts[1].strip()
+        else:
+            employer = ""
+
+        job_page_url = make_job_page_url(
+            link
+        )
+
+        print(
+            "Checking Career Center page for {}:".format(
+                employer
+            )
+        )
+
+        print(job_page_url)
+
+        logo_url = get_logo_url(
+            item,
+            job_page_url,
+            employer
+        )
+
+        jobs.append(
+            {
+                "title": title,
+                "employer": employer,
+                "link": link,
+                "company_logo_url": logo_url,
+            }
+        )
+
+        if len(jobs) >= MAX_JOBS:
+            break
+
+    with open(
+        "jobs.json",
+        "w",
+        encoding="utf-8"
+    ) as file:
+        json.dump(
+            jobs,
+            file,
+            indent=2,
+            ensure_ascii=False
+        )
+
+    print(
+        "Updated {} jobs.".format(
+            len(jobs)
         )
     )
 
 
-# Add job
-
-jobs.append(
-    {
-        "title": title,
-        "employer": employer,
-        "link": link,
-        "company_logo_url": logo_url
-    }
-)
-
-
-# Keep the existing 10-job limit
-
-if len(jobs) >= 10:
-    break
-
-# Write jobs.json
-
-with open(
-"jobs.json",
-"w",
-encoding="utf-8"
-) as file:
-
-json.dump(
-    jobs,
-    file,
-    indent=2,
-    ensure_ascii=False
-)
-
-print("")
-print(
-"Updated {} jobs.".format(
-len(jobs)
-)
-)
+if __name__ == "__main__":
+    main()
