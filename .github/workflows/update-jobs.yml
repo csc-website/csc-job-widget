@@ -22,7 +22,7 @@ jobs:
           python-version: "3.x"
 
       - name: Update jobs.json
-        run: python update_jobs.py
+        run: python update-jobs.py
 
       - name: Commit updated jobs and logo cache
         run: |
